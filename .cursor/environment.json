@@ -1,0 +1,4 @@
+{
+  "name": "graphify",
+  "install": "command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh; export PATH=\"$HOME/.local/bin:$PATH\"; uv python install 3.12 && UV_PYTHON_PREFERENCE=only-managed uv sync --all-extras --frozen"
+}
