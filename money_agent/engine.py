@@ -23,6 +23,9 @@ class TurboReport:
     agent_micros: int
     payout_micros: int
     net_assets_micros: int
+    paid_to: str | None = None
+    chain: str | None = None
+    real_settlement: bool = False
     ticks_detail: list[TickResult] = field(default_factory=list)
 
     def as_json(self) -> dict:
@@ -35,6 +38,9 @@ class TurboReport:
             "agent_micros": self.agent_micros,
             "payout_micros": self.payout_micros,
             "net_assets_micros": self.net_assets_micros,
+            "paid_to": self.paid_to,
+            "chain": self.chain,
+            "real_settlement": self.real_settlement,
         }
 
 
@@ -76,6 +82,11 @@ def run_turbo(
                 swept += swept_now
         details.append(TickResult(shift=report, swept_micros=swept_now))
     books = agent.ledger.books()
+    chain = None
+    if payout_to:
+        from money_agent.wallet import payout_chain
+
+        chain = payout_chain(payout_to)
     return TurboReport(
         ticks=ticks,
         sales=sales,
@@ -85,6 +96,9 @@ def run_turbo(
         agent_micros=books.agent_micros,
         payout_micros=books.payout_micros,
         net_assets_micros=agent.ledger.net_assets(),
+        paid_to=payout_to,
+        chain=chain,
+        real_settlement=False,
         ticks_detail=details,
     )
 

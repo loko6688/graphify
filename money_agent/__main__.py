@@ -14,7 +14,8 @@ from money_agent.engine import run_turbo, turbo_public
 from money_agent.ledger import Ledger
 from money_agent.policy import SpendPolicy
 from money_agent.server import make_server
-from money_agent.wallet import create_wallet, load_wallet, public_view
+from money_agent.ways import ways_payload
+from money_agent.wallet import create_wallet, load_wallet, public_view, payout_chain
 from money_agent.x402 import INSIGHT_RESOURCE, PRICE_MICROS
 
 DEFAULT_WALLET = Path.home() / ".money-agent" / "agent.wallet.json"
@@ -57,18 +58,23 @@ def main(argv: list[str] | None = None) -> int:
     p_wallet.add_argument("--init", action="store_true")
 
     p_dest = sub.add_parser("payout-dest", help="Save YOUR public wallet as payout destination")
-    p_dest.add_argument("--to", required=True, help="0x + 40 hex. Never a card or private key.")
+    p_dest.add_argument("--to", required=True, help="Solana base58 or 0x EVM. Never a card or private key.")
 
     p_pay = sub.add_parser("payout", help="Send treasury micros to the configured owner address")
     p_pay.add_argument("--db", type=Path, required=True)
     p_pay.add_argument("--amount-micros", type=int, required=True)
-    p_pay.add_argument("--to", default=None, help="override destination (must still be a public 0x address)")
+    p_pay.add_argument("--to", default=None, help="override dest (Solana base58 or 0x). Never a card or key.")
 
     p_turbo = sub.add_parser("turbo", help="Run many shifts and auto-sweep excess to your 0x address")
     p_turbo.add_argument("--db", type=Path, required=True)
     p_turbo.add_argument("--ticks", type=int, default=8)
     p_turbo.add_argument("--customers", type=int, default=3)
     p_turbo.add_argument("--no-payout", action="store_true")
+
+    p_status = sub.add_parser("status", help="Show books, payout dest, and whether money is real")
+    p_status.add_argument("--db", type=Path, default=None)
+
+    p_ways = sub.add_parser("ways", help="List real rails (x402/Solana Pay). No fake yield.")
 
     args = parser.parse_args(argv)
 
@@ -77,6 +83,37 @@ def main(argv: list[str] | None = None) -> int:
         names = [f"buyer-{i}" for i in range(max(1, args.customers))]
         report = agent.run_shift(names)
         print(json.dumps(report.__dict__, indent=2))
+        return 0
+
+    if args.cmd == "status":
+        cfg = load_config()
+        db = args.db
+        payload: dict = {
+            "payout_address": cfg.payout_address,
+            "chain": cfg.chain,
+            "real_settlement": False,
+            "min_500_eur_today": False,
+            "note": "Ledger only. Real SOL/USDC needs a buyer who signs. No cards, no private keys.",
+            "ways": ways_payload(cfg.payout_address)["ways"],
+        }
+        if db and db.exists():
+            agent = build_agent(db)
+            b = agent.ledger.books()
+            payload.update(
+                {
+                    "treasury_micros": b.treasury_micros,
+                    "agent_micros": b.agent_micros,
+                    "payout_micros": b.payout_micros,
+                    "revenue_micros": b.revenue_micros,
+                    "net_assets_micros": agent.ledger.net_assets(),
+                    "recent": agent.ledger.recent_entries(8),
+                }
+            )
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    if args.cmd == "ways":
+        print(json.dumps(ways_payload(load_config().payout_address), indent=2))
         return 0
 
     if args.cmd == "wallet":
@@ -89,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "payout-dest":
         cfg = save_payout_address(args.to)
-        print(json.dumps({"payout_address": cfg.payout_address}, indent=2))
+        print(json.dumps({"payout_address": cfg.payout_address, "chain": cfg.chain}, indent=2))
         return 0
 
     if args.cmd == "payout":
@@ -105,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
                     "treasury_micros": books.treasury_micros,
                     "payout_micros": books.payout_micros,
                     "net_assets_micros": agent.ledger.net_assets(),
-                    "chain": "ledger-only (wire a wallet signer to broadcast)",
+                    "chain": payout_chain(dest),
                 },
                 indent=2,
             )

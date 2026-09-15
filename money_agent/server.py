@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 from money_agent.agent import MoneyAgent
 from money_agent.config import OperatorConfig
 from money_agent.engine import run_turbo, sweep_excess, turbo_public
+from money_agent.ways import ways_payload
 from money_agent.wallet import AgentWallet, WalletError, validate_payout_address
 from money_agent.x402 import INSIGHT_RESOURCE, PRICE_MICROS, new_challenge, sign_proof, verify_proof
 
@@ -135,6 +136,9 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "agent_address": None if self.wallet is None else self.wallet.address,
                     "payout_address": self.payout_to,
+                    "chain": None if not self.payout_to else (
+                        "solana" if not str(self.payout_to).startswith("0x") else "evm"
+                    ),
                     "accepts_cards": False,
                     "accepts_private_keys": False,
                     "auto_payout": self._auto(),
@@ -157,6 +161,9 @@ class Handler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if parsed.path == "/api/ways":
+            self._json(200, ways_payload(self.payout_to))
+            return
         if parsed.path == "/api/activity":
             self._json(200, {"entries": self.agent.ledger.recent_entries(25)})
             return
@@ -173,10 +180,16 @@ class Handler(BaseHTTPRequestHandler):
                 if verify_proof(self.secret, ch, payer, proof):
                     self._json(200, {"insight": self.agent.insight_for(query), "paid": True})
                     return
-            ch = new_challenge()
+            ch = new_challenge(pay_to=self.payout_to)
             self._json(
                 402,
-                {"error": "Payment Required", "invoice": ch.invoice_id, "amount_micros": ch.amount_micros},
+                {
+                    "error": "Payment Required",
+                    "invoice": ch.invoice_id,
+                    "amount_micros": ch.amount_micros,
+                    "accepts": ch.accepts(),
+                    "real_settlement": False,
+                },
                 extra_headers={"WWW-Authenticate": ch.header()},
             )
             return

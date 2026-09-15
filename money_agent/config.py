@@ -7,13 +7,14 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from money_agent.wallet import WalletError, validate_payout_address
+from money_agent.wallet import WalletError, payout_chain, validate_payout_address
 from money_agent.x402 import PRICE_MICROS
 
 
 @dataclass(frozen=True)
 class OperatorConfig:
     payout_address: str | None
+    chain: str | None = None
     reserve_micros: int = PRICE_MICROS
     auto_payout: bool = True
 
@@ -39,13 +40,19 @@ def load_config(path: Path | None = None) -> OperatorConfig:
     env_addr = os.environ.get("MONEY_AGENT_PAYOUT_ADDRESS")
     raw = env_addr or data.get("payout_address")
     addr = validate_payout_address(str(raw)) if raw else None
+    chain = payout_chain(addr) if addr else None
     reserve = int(os.environ.get("MONEY_AGENT_RESERVE_MICROS") or data.get("reserve_micros") or PRICE_MICROS)
     auto = os.environ.get("MONEY_AGENT_AUTO_PAYOUT", str(data.get("auto_payout", True))).lower() in {
         "1",
         "true",
         "yes",
     }
-    return OperatorConfig(payout_address=addr, reserve_micros=max(0, reserve), auto_payout=auto)
+    return OperatorConfig(
+        payout_address=addr,
+        chain=chain,
+        reserve_micros=max(0, reserve),
+        auto_payout=auto,
+    )
 
 
 def save_config(update: dict, path: Path | None = None) -> OperatorConfig:
@@ -54,6 +61,7 @@ def save_config(update: dict, path: Path | None = None) -> OperatorConfig:
     payload = _read_file(cfg)
     if "payout_address" in update and update["payout_address"]:
         payload["payout_address"] = validate_payout_address(str(update["payout_address"]))
+        payload["chain"] = payout_chain(payload["payout_address"])
     if "reserve_micros" in update:
         payload["reserve_micros"] = int(update["reserve_micros"])
     if "auto_payout" in update:
@@ -70,6 +78,6 @@ def save_payout_address(address: str, path: Path | None = None) -> OperatorConfi
 def require_payout_address(cfg: OperatorConfig) -> str:
     if not cfg.payout_address:
         raise WalletError(
-            "set MONEY_AGENT_PAYOUT_ADDRESS or: python -m money_agent payout-dest --to 0x..."
+            "set MONEY_AGENT_PAYOUT_ADDRESS or: python -m money_agent payout-dest --to <solana-or-0x>"
         )
     return cfg.payout_address

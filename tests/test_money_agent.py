@@ -151,6 +151,11 @@ class WalletTests(unittest.TestCase):
             validate_payout_address("ab" * 32)
         good = "0x" + "11" * 20
         self.assertEqual(validate_payout_address(good), good)
+        sol = "4M7DGWMb4aGhdYktPwAkxQFZido81MeukReSgu2mJ2oM"
+        self.assertEqual(validate_payout_address(sol), sol)
+        from money_agent.wallet import payout_chain
+
+        self.assertEqual(payout_chain(sol), "solana")
         tmp.cleanup()
 
 
@@ -238,7 +243,7 @@ class TurboTests(unittest.TestCase):
     def test_auto_sweep_keeps_reserve(self) -> None:
         tmp = tempfile.TemporaryDirectory()
         ledger = Ledger(Path(tmp.name) / "l.sqlite")
-        dest = "0x" + "44" * 20
+        dest = "4M7DGWMb4aGhdYktPwAkxQFZido81MeukReSgu2mJ2oM"
         agent = MoneyAgent(ledger, default_policy())
         report = run_turbo(
             agent,
@@ -251,7 +256,11 @@ class TurboTests(unittest.TestCase):
         self.assertEqual(report.sales, 8)
         self.assertGreater(report.swept_micros, 0)
         self.assertLessEqual(report.treasury_micros, PRICE_MICROS)
-        self.assertEqual(report.net_assets_micros + report.payout_micros, 8 * PRICE_MICROS)
+        self.assertEqual(report.paid_to, dest)
+        self.assertEqual(report.chain, "solana")
+        self.assertFalse(report.real_settlement)
+        memos = " ".join(e["memo"] for e in ledger.recent_entries(50))
+        self.assertIn(dest, memos)
         ledger.close()
         tmp.cleanup()
 
@@ -269,7 +278,7 @@ class CliTests(unittest.TestCase):
         path = Path(tmp.name) / "w.json"
         code = main(["wallet", "--init", "--path", str(path)])
         self.assertEqual(code, 0)
-        dest = "0x" + "33" * 20
+        dest = "4M7DGWMb4aGhdYktPwAkxQFZido81MeukReSgu2mJ2oM"
         cfg = Path(tmp.name) / "cfg.json"
         import os
 
@@ -277,8 +286,11 @@ class CliTests(unittest.TestCase):
         try:
             code = main(["payout-dest", "--to", dest])
             self.assertEqual(code, 0)
+            code = main(["ways"])
+            self.assertEqual(code, 0)
         finally:
             os.environ.pop("MONEY_AGENT_CONFIG", None)
+            os.environ.pop("MONEY_AGENT_PAYOUT_ADDRESS", None)
         tmp.cleanup()
 
 

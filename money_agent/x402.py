@@ -17,6 +17,42 @@ class Challenge:
     resource: str
     amount_micros: int
     invoice_id: str
+    pay_to: str | None = None
+
+    def accepts(self) -> list[dict]:
+        from money_agent.ways import SOLANA_USDC_MINT
+        from money_agent.wallet import payout_chain
+
+        if not self.pay_to:
+            return [
+                {
+                    "scheme": "exact",
+                    "network": "money-agent:ledger",
+                    "maxAmountRequired": str(self.amount_micros),
+                    "asset": "USD-ledger",
+                    "payTo": "treasury",
+                }
+            ]
+        chain = payout_chain(self.pay_to)
+        if chain == "solana":
+            return [
+                {
+                    "scheme": "exact",
+                    "network": "solana:mainnet",
+                    "maxAmountRequired": str(self.amount_micros),
+                    "asset": SOLANA_USDC_MINT,
+                    "payTo": self.pay_to,
+                }
+            ]
+        return [
+            {
+                "scheme": "exact",
+                "network": "eip155:8453",
+                "maxAmountRequired": str(self.amount_micros),
+                "asset": "USDC",
+                "payTo": self.pay_to,
+            }
+        ]
 
     def header(self) -> str:
         payload = {
@@ -24,13 +60,19 @@ class Challenge:
             "resource": self.resource,
             "amount": self.amount_micros,
             "invoice": self.invoice_id,
-            "asset": "USD-ledger",
+            "accepts": self.accepts(),
         }
         return "Payment " + json.dumps(payload, separators=(",", ":"))
 
 
-def new_challenge(resource: str = INSIGHT_RESOURCE, amount: int = PRICE_MICROS) -> Challenge:
-    return Challenge(resource=resource, amount_micros=amount, invoice_id=secrets.token_hex(16))
+def new_challenge(
+    resource: str = INSIGHT_RESOURCE,
+    amount: int = PRICE_MICROS,
+    pay_to: str | None = None,
+) -> Challenge:
+    return Challenge(
+        resource=resource, amount_micros=amount, invoice_id=secrets.token_hex(16), pay_to=pay_to
+    )
 
 
 def sign_proof(secret: bytes, challenge: Challenge, payer: str) -> str:
