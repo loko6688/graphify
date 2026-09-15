@@ -40,3 +40,7 @@ paper/
 
 # macOS Finder metadata
 .DS_Store
+
+# Money Agent local keystore / operator config (never commit secrets)
+.money-agent/
+*.wallet.json
