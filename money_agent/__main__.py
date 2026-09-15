@@ -10,6 +10,7 @@ from pathlib import Path
 
 from money_agent.agent import MoneyAgent
 from money_agent.config import load_config, require_payout_address, save_payout_address
+from money_agent.engine import run_turbo, turbo_public
 from money_agent.ledger import Ledger
 from money_agent.policy import SpendPolicy
 from money_agent.server import make_server
@@ -63,6 +64,12 @@ def main(argv: list[str] | None = None) -> int:
     p_pay.add_argument("--amount-micros", type=int, required=True)
     p_pay.add_argument("--to", default=None, help="override destination (must still be a public 0x address)")
 
+    p_turbo = sub.add_parser("turbo", help="Run many shifts and auto-sweep excess to your 0x address")
+    p_turbo.add_argument("--db", type=Path, required=True)
+    p_turbo.add_argument("--ticks", type=int, default=8)
+    p_turbo.add_argument("--customers", type=int, default=3)
+    p_turbo.add_argument("--no-payout", action="store_true")
+
     args = parser.parse_args(argv)
 
     if args.cmd == "shift":
@@ -105,12 +112,28 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    if args.cmd == "turbo":
+        cfg = load_config()
+        dest = None if args.no_payout else cfg.payout_address
+        agent = build_agent(args.db)
+        report = run_turbo(
+            agent,
+            ticks=args.ticks,
+            customers_per_tick=args.customers,
+            payout_to=dest,
+            reserve_micros=cfg.reserve_micros,
+            auto_payout=bool(dest) and not args.no_payout,
+        )
+        print(json.dumps(turbo_public(report), indent=2))
+        return 0
+
     db = _db(args.db)
     wallet_path = args.wallet
     if not wallet_path.exists():
         create_wallet(wallet_path)
     wallet = load_wallet(wallet_path)
     payout_to = load_config().payout_address
+    operator = load_config()
     httpd = make_server(
         build_agent(db),
         secrets.token_bytes(32),
@@ -118,6 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         args.port,
         wallet=wallet,
         payout_to=payout_to,
+        operator=operator,
     )
     print(f"Money Agent on http://{args.host}:{args.port}  ledger={db}")
     print(f"agent wallet {wallet.address}  payout_to={payout_to or 'unset'}")

@@ -13,6 +13,7 @@ from money_agent.ledger import AGENT, TREASURY, Ledger
 from money_agent.policy import PolicyError, SpendPolicy
 from money_agent.server import make_server
 from money_agent.x402 import INSIGHT_RESOURCE, PRICE_MICROS, Challenge, sign_proof
+from money_agent.engine import run_turbo
 from money_agent.wallet import WalletError, create_wallet, public_view, validate_payout_address
 from money_agent.__main__ import default_policy, main
 
@@ -211,10 +212,48 @@ class HttpPayoutTests(unittest.TestCase):
             self.assertEqual(after["net_assets_micros"], before["net_assets_micros"] - 50000)
             wallet = json.loads(urlopen(f"http://127.0.0.1:{port}/api/wallet", timeout=5).read())
             self.assertFalse(wallet["accepts_cards"])
+            turbo = json.loads(
+                urlopen(
+                    Request(
+                        f"http://127.0.0.1:{port}/v1/turbo",
+                        data=b'{"ticks":2,"customers":2}',
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    ),
+                    timeout=5,
+                ).read()
+            )
+            self.assertEqual(turbo["sales"], 4)
+            act = json.loads(urlopen(f"http://127.0.0.1:{port}/api/activity", timeout=5).read())
+            self.assertTrue(act["entries"])
+            home = urlopen(f"http://127.0.0.1:{port}/", timeout=5).read().decode()
+            self.assertIn("Turbo", home)
         finally:
             httpd.shutdown()
             ledger.close()
             tmp.cleanup()
+
+
+class TurboTests(unittest.TestCase):
+    def test_auto_sweep_keeps_reserve(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        ledger = Ledger(Path(tmp.name) / "l.sqlite")
+        dest = "0x" + "44" * 20
+        agent = MoneyAgent(ledger, default_policy())
+        report = run_turbo(
+            agent,
+            ticks=4,
+            customers_per_tick=2,
+            payout_to=dest,
+            reserve_micros=PRICE_MICROS,
+            auto_payout=True,
+        )
+        self.assertEqual(report.sales, 8)
+        self.assertGreater(report.swept_micros, 0)
+        self.assertLessEqual(report.treasury_micros, PRICE_MICROS)
+        self.assertEqual(report.net_assets_micros + report.payout_micros, 8 * PRICE_MICROS)
+        ledger.close()
+        tmp.cleanup()
 
 
 class CliTests(unittest.TestCase):

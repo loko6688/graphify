@@ -17,7 +17,16 @@ export MONEY_AGENT_PAYOUT_ADDRESS=0xYourPublicAddressHere000000000000000000
 python -m money_agent payout-dest --to 0xYourPublicAddressHere000000000000000000
 
 python -m money_agent shift --customers 5 --db ./money.sqlite
-python -m money_agent payout --db ./money.sqlite --amount-micros 50000
+python -m money_agent turbo --db ./money.sqlite --ticks 8 --customers 3
+python -m money_agent serve --port 8765 --db ./money.sqlite
+```
+
+`turbo` fährt mehrere Shifts und sweeped Treasury über der Reserve (`PRICE`, default $0.05) auf deine 0x-Adresse.
+
+## Serve
+
+```bash
+python -m money_agent serve --port 8765 --db ./money.sqlite
 ```
 
 `payout` bucht Treasury → deine Adresse im Ledger. On-chain Broadcast brauchst du mit deinem eigenen Signer (MetaMask, Coinbase, AgentCore). Diese Datei ist **kein** Ethereum-secp256k1-Key für Mainnet.

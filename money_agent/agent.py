@@ -32,6 +32,8 @@ class MoneyAgent:
         self.ledger = ledger
         self.policy = policy
         self.endowment_bps = endowment_bps
+        self._shift_spent = 0
+        self._sale_seq = 0
 
     def payout(self, amount_micros: int, dest_address: str) -> None:
         from money_agent.wallet import validate_payout_address
@@ -63,7 +65,7 @@ class MoneyAgent:
             self.policy.authorize(
                 amount_micros=amount,
                 resource=INSIGHT_RESOURCE,
-                session_spent_micros=books.session_spent_micros,
+                session_spent_micros=self._shift_spent,
             )
         except PolicyError:
             return False
@@ -71,14 +73,17 @@ class MoneyAgent:
             self.ledger.agent_spend(amount, memo="self-hosted research")
         except ValueError:
             return False
+        self._shift_spent += amount
         return True
 
     def run_shift(self, customers: list[str]) -> ShiftReport:
+        self._shift_spent = 0
         sales = 0
         self_buys = 0
         refused = 0
         for i, cid in enumerate(customers):
-            self.sell_to_customer(cid, query=f"q-{i}")
+            self._sale_seq += 1
+            self.sell_to_customer(f"{cid}-{self._sale_seq}", query=f"q-{i}")
             sales += 1
             if self.maybe_buy_own_tool():
                 self_buys += 1

@@ -146,8 +146,30 @@ class Ledger:
                 session_spent_micros=int(session),
             )
 
+    def recent_entries(self, limit: int = 20) -> list[dict[str, object]]:
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT id, ts, debit, credit, amount_micros, kind, memo
+                FROM entries ORDER BY id DESC LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "id": r[0],
+                "ts": r[1],
+                "debit": r[2],
+                "credit": r[3],
+                "amount_micros": r[4],
+                "kind": r[5],
+                "memo": r[6],
+            }
+            for r in rows
+        ]
+
     def net_assets(self) -> int:
-        """Treasury + agent + customers. Equals market inflows (conservation)."""
+        """Treasury + agent + customers. Equals market inflows minus payouts."""
         with self._lock:
             row = self._conn.execute(
                 "SELECT COALESCE(SUM(balance_micros),0) FROM accounts WHERE name != ?",
