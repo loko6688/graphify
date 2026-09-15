@@ -16,6 +16,8 @@ CARD_DIGITS = re.compile(r"^\d{13,19}$")
 ETH_ADDR = re.compile(r"^0x[0-9a-fA-F]{40}$")
 # Solana pubkeys: 32–44 chars, Bitcoin-style Base58 (no 0, O, I, l).
 SOL_ADDR = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+# Tron USDT (TRC-20) receive addresses start with T.
+TRON_ADDR = re.compile(r"^T[1-9A-HJ-NP-Za-km-z]{33}$")
 # 64-hex looks like a raw secp256k1 private key — never a payout destination.
 RAW_PRIV = re.compile(r"^[0-9a-fA-F]{64}$")
 
@@ -38,6 +40,8 @@ def is_card_number(value: str) -> bool:
 def payout_chain(address: str) -> str:
     if ETH_ADDR.match(address):
         return "evm"
+    if TRON_ADDR.match(address):
+        return "tron"
     if SOL_ADDR.match(address) and not address.startswith("0x"):
         return "solana"
     raise WalletError("unknown payout chain")
@@ -56,9 +60,11 @@ def validate_payout_address(value: str) -> str:
         raise WalletError("secrets are not payout destinations")
     if ETH_ADDR.match(addr):
         return "0x" + addr[2:].lower()
+    if TRON_ADDR.match(addr):
+        return addr
     if SOL_ADDR.match(addr):
         return addr
-    raise WalletError("payout address must be Solana base58 or 0x + 40 hex")
+    raise WalletError("payout address must be Solana, Tron T-addr, or 0x + 40 hex")
 
 
 def derive_address(secret: bytes) -> str:

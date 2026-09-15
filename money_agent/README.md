@@ -17,7 +17,7 @@ python -m money_agent turbo --db ./money.sqlite --ticks 8 --customers 3
 python -m money_agent serve --port 8765 --db ./money.sqlite
 ```
 
-`python -m money_agent ways` lists real rails (x402 USDC, Solana Pay). **€500 heute ist nicht garantiert** — dafür braucht es echte Käufer, die USDC signieren. Karten und Keys bleiben tabu.
+40% of excess stays as **credits** (working capital). The rest is booked to your Solana address. SPL **USDT** uses the same public key (`Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB`). A separate Tron `T…` USDT address: `export MONEY_AGENT_USDT_ADDRESS=T...` (paste only the public address).
 
 ## Honest limits
 

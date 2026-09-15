@@ -156,6 +156,8 @@ class WalletTests(unittest.TestCase):
         from money_agent.wallet import payout_chain
 
         self.assertEqual(payout_chain(sol), "solana")
+        tron = "T" + "1" * 33
+        self.assertEqual(payout_chain(validate_payout_address(tron)), "tron")
         tmp.cleanup()
 
 
@@ -254,8 +256,9 @@ class TurboTests(unittest.TestCase):
             auto_payout=True,
         )
         self.assertEqual(report.sales, 8)
-        self.assertGreater(report.swept_micros, 0)
-        self.assertLessEqual(report.treasury_micros, PRICE_MICROS)
+        self.assertGreater(report.reinvested_micros, 0)
+        self.assertGreater(report.credits_micros, 0)
+        self.assertEqual(report.net_assets_micros + report.payout_micros, 8 * PRICE_MICROS)
         self.assertEqual(report.paid_to, dest)
         self.assertEqual(report.chain, "solana")
         self.assertFalse(report.real_settlement)

@@ -1,4 +1,4 @@
-"""Multi-tick earn loop with optional treasury sweep to the owner address."""
+"""Multi-tick earn loop: reinvest a cut as credits, sweep the rest to the owner."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from money_agent.agent import MoneyAgent, ShiftReport
 class TickResult:
     shift: ShiftReport
     swept_micros: int
+    reinvested_micros: int = 0
 
 
 @dataclass
@@ -19,8 +20,10 @@ class TurboReport:
     sales: int
     payouts: int
     swept_micros: int
+    reinvested_micros: int
     treasury_micros: int
     agent_micros: int
+    credits_micros: int
     payout_micros: int
     net_assets_micros: int
     paid_to: str | None = None
@@ -34,8 +37,10 @@ class TurboReport:
             "sales": self.sales,
             "payouts": self.payouts,
             "swept_micros": self.swept_micros,
+            "reinvested_micros": self.reinvested_micros,
             "treasury_micros": self.treasury_micros,
             "agent_micros": self.agent_micros,
+            "credits_micros": self.credits_micros,
             "payout_micros": self.payout_micros,
             "net_assets_micros": self.net_assets_micros,
             "paid_to": self.paid_to,
@@ -44,15 +49,27 @@ class TurboReport:
         }
 
 
-def sweep_excess(agent: MoneyAgent, dest: str | None, reserve_micros: int) -> int:
+def sweep_excess(
+    agent: MoneyAgent,
+    dest: str | None,
+    reserve_micros: int,
+    reinvest_bps: int = 4000,
+) -> tuple[int, int]:
+    """Return (paid_out, parked_as_credits). Credits stay on the books."""
     if not dest:
-        return 0
+        return 0, 0
     books = agent.ledger.books()
     excess = books.treasury_micros - reserve_micros
     if excess <= 0:
-        return 0
-    agent.payout(excess, dest)
-    return excess
+        return 0, 0
+    reinvest_bps = max(0, min(reinvest_bps, 9000))
+    parked = (excess * reinvest_bps) // 10_000
+    paid = excess - parked
+    if parked:
+        agent.ledger.park_credits(parked)
+    if paid:
+        agent.payout(paid, dest)
+    return paid, parked
 
 
 def run_turbo(
@@ -63,24 +80,30 @@ def run_turbo(
     payout_to: str | None,
     reserve_micros: int,
     auto_payout: bool,
+    reinvest_bps: int = 4000,
 ) -> TurboReport:
     ticks = max(1, min(ticks, 50))
     customers_per_tick = max(1, min(customers_per_tick, 25))
     sales = 0
     payouts = 0
     swept = 0
+    reinvested = 0
     details: list[TickResult] = []
     for t in range(ticks):
         names = [f"t{t}-b{i}" for i in range(customers_per_tick)]
         report = agent.run_shift(names)
         sales += report.sales
         swept_now = 0
+        parked_now = 0
         if auto_payout:
-            swept_now = sweep_excess(agent, payout_to, reserve_micros)
+            swept_now, parked_now = sweep_excess(
+                agent, payout_to, reserve_micros, reinvest_bps=reinvest_bps
+            )
             if swept_now:
                 payouts += 1
                 swept += swept_now
-        details.append(TickResult(shift=report, swept_micros=swept_now))
+            reinvested += parked_now
+        details.append(TickResult(shift=report, swept_micros=swept_now, reinvested_micros=parked_now))
     books = agent.ledger.books()
     chain = None
     if payout_to:
@@ -92,8 +115,10 @@ def run_turbo(
         sales=sales,
         payouts=payouts,
         swept_micros=swept,
+        reinvested_micros=reinvested,
         treasury_micros=books.treasury_micros,
         agent_micros=books.agent_micros,
+        credits_micros=books.credits_micros,
         payout_micros=books.payout_micros,
         net_assets_micros=agent.ledger.net_assets(),
         paid_to=payout_to,
@@ -106,7 +131,12 @@ def run_turbo(
 def turbo_public(report: TurboReport) -> dict:
     body = report.as_json()
     body["ticks_detail"] = [
-        {"sales": d.shift.sales, "treasury_micros": d.shift.treasury_micros, "swept_micros": d.swept_micros}
+        {
+            "sales": d.shift.sales,
+            "treasury_micros": d.shift.treasury_micros,
+            "swept_micros": d.swept_micros,
+            "reinvested_micros": d.reinvested_micros,
+        }
         for d in report.ticks_detail
     ]
     return body

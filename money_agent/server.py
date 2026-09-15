@@ -60,6 +60,7 @@ async function refresh(){
   const usd = n => '$'+(n/1e6).toFixed(2);
   document.getElementById('books').innerHTML =
     'Treasury '+usd(b.treasury_micros)+' · Agent '+usd(b.agent_micros)+
+    ' · Credits '+usd(b.credits_micros||0)+
     ' · Paid out '+usd(b.payout_micros)+' · Net '+usd(b.net_assets_micros);
   const a = await (await fetch('/api/activity')).json();
   document.getElementById('act').innerHTML = a.entries.map(e =>
@@ -122,6 +123,11 @@ class Handler(BaseHTTPRequestHandler):
     def _auto(self) -> bool:
         return True if self.operator is None else self.operator.auto_payout
 
+    def _reinvest(self) -> int:
+        if self.operator:
+            return self.operator.reinvest_bps
+        return 4000
+
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if parsed.path in ("/", "/index.html"):
@@ -136,13 +142,17 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "agent_address": None if self.wallet is None else self.wallet.address,
                     "payout_address": self.payout_to,
+                    "usdt_address": None if not self.operator else self.operator.usdt_address,
                     "chain": None if not self.payout_to else (
-                        "solana" if not str(self.payout_to).startswith("0x") else "evm"
+                        "evm" if str(self.payout_to).startswith("0x") else (
+                            "tron" if str(self.payout_to).startswith("T") else "solana"
+                        )
                     ),
                     "accepts_cards": False,
                     "accepts_private_keys": False,
                     "auto_payout": self._auto(),
                     "reserve_micros": self._reserve(),
+                    "reinvest_bps": self._reinvest(),
                 },
             )
             return
@@ -156,13 +166,14 @@ class Handler(BaseHTTPRequestHandler):
                     "revenue_micros": b.revenue_micros,
                     "spend_micros": b.spend_micros,
                     "payout_micros": b.payout_micros,
+                    "credits_micros": b.credits_micros,
                     "net_assets_micros": self.agent.ledger.net_assets(),
                     "session_spent_micros": b.session_spent_micros,
                 },
             )
             return
         if parsed.path == "/api/ways":
-            self._json(200, ways_payload(self.payout_to))
+            self._json(200, ways_payload(self.payout_to, None if not self.operator else self.operator.usdt_address))
             return
         if parsed.path == "/api/activity":
             self._json(200, {"entries": self.agent.ledger.recent_entries(25)})
@@ -224,6 +235,7 @@ class Handler(BaseHTTPRequestHandler):
                 payout_to=self.payout_to,
                 reserve_micros=self._reserve(),
                 auto_payout=self._auto(),
+                reinvest_bps=self._reinvest(),
             )
             self._json(200, turbo_public(report))
             return
@@ -231,12 +243,15 @@ class Handler(BaseHTTPRequestHandler):
             if not self.payout_to:
                 self._json(400, {"error": "set payout dest first"})
                 return
-            swept = sweep_excess(self.agent, self.payout_to, self._reserve())
+            swept, parked = sweep_excess(
+                self.agent, self.payout_to, self._reserve(), reinvest_bps=self._reinvest()
+            )
             b = self.agent.ledger.books()
             self._json(
                 200,
                 {
                     "swept_micros": swept,
+                    "reinvested_micros": parked,
                     "paid_to": self.payout_to,
                     "treasury_micros": b.treasury_micros,
                     "payout_micros": b.payout_micros,

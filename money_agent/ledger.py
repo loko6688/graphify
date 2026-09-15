@@ -9,6 +9,7 @@ from pathlib import Path
 
 TREASURY = "treasury"
 AGENT = "agent"
+CREDITS = "credits"  # reinvested working capital; still on the books
 MARKET = "market"  # external world. Credits here are real inflows.
 
 
@@ -19,6 +20,7 @@ class Books:
     revenue_micros: int
     spend_micros: int
     payout_micros: int
+    credits_micros: int
     net_profit_micros: int
     session_spent_micros: int
 
@@ -45,7 +47,7 @@ class Ledger:
             );
             """
         )
-        for name in (TREASURY, AGENT, MARKET):
+        for name in (TREASURY, AGENT, CREDITS, MARKET):
             self._conn.execute(
                 "INSERT OR IGNORE INTO accounts(name, balance_micros) VALUES (?, 0)",
                 (name,),
@@ -119,6 +121,12 @@ class Ledger:
             self._transfer(TREASURY, MARKET, amount, "payout", f"{memo} {dest_address}")
             self._conn.commit()
 
+    def park_credits(self, amount: int, memo: str = "reinvest credits") -> None:
+        """Keep a cut of treasury as working capital. Does not print money."""
+        with self._lock:
+            self._transfer(TREASURY, CREDITS, amount, "reinvest", memo)
+            self._conn.commit()
+
     def books(self) -> Books:
         with self._lock:
             rev = self._conn.execute(
@@ -142,6 +150,7 @@ class Ledger:
                 revenue_micros=int(rev),
                 spend_micros=int(spend),
                 payout_micros=int(payout),
+                credits_micros=self._balance(CREDITS),
                 net_profit_micros=int(inflow) - int(payout),
                 session_spent_micros=int(session),
             )

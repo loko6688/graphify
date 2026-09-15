@@ -90,11 +90,13 @@ def main(argv: list[str] | None = None) -> int:
         db = args.db
         payload: dict = {
             "payout_address": cfg.payout_address,
+            "usdt_address": cfg.usdt_address,
             "chain": cfg.chain,
+            "reinvest_bps": cfg.reinvest_bps,
             "real_settlement": False,
             "min_500_eur_today": False,
-            "note": "Ledger only. Real SOL/USDC needs a buyer who signs. No cards, no private keys.",
-            "ways": ways_payload(cfg.payout_address)["ways"],
+            "note": "Ledger only. Real USDT/USDC needs a buyer who signs. No cards, no private keys.",
+            "ways": ways_payload(cfg.payout_address, cfg.usdt_address)["ways"],
         }
         if db and db.exists():
             agent = build_agent(db)
@@ -103,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
                 {
                     "treasury_micros": b.treasury_micros,
                     "agent_micros": b.agent_micros,
+                    "credits_micros": b.credits_micros,
                     "payout_micros": b.payout_micros,
                     "revenue_micros": b.revenue_micros,
                     "net_assets_micros": agent.ledger.net_assets(),
@@ -113,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "ways":
-        print(json.dumps(ways_payload(load_config().payout_address), indent=2))
+        print(json.dumps(ways_payload(load_config().payout_address, load_config().usdt_address), indent=2))
         return 0
 
     if args.cmd == "wallet":
@@ -160,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
             payout_to=dest,
             reserve_micros=cfg.reserve_micros,
             auto_payout=bool(dest) and not args.no_payout,
+            reinvest_bps=cfg.reinvest_bps,
         )
         print(json.dumps(turbo_public(report), indent=2))
         return 0

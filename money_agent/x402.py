@@ -20,7 +20,7 @@ class Challenge:
     pay_to: str | None = None
 
     def accepts(self) -> list[dict]:
-        from money_agent.ways import SOLANA_USDC_MINT
+        from money_agent.ways import SOLANA_USDC_MINT, SOLANA_USDT_MINT
         from money_agent.wallet import payout_chain
 
         if not self.pay_to:
@@ -41,6 +41,23 @@ class Challenge:
                     "network": "solana:mainnet",
                     "maxAmountRequired": str(self.amount_micros),
                     "asset": SOLANA_USDC_MINT,
+                    "payTo": self.pay_to,
+                },
+                {
+                    "scheme": "exact",
+                    "network": "solana:mainnet",
+                    "maxAmountRequired": str(self.amount_micros),
+                    "asset": SOLANA_USDT_MINT,
+                    "payTo": self.pay_to,
+                },
+            ]
+        if chain == "tron":
+            return [
+                {
+                    "scheme": "exact",
+                    "network": "tron:mainnet",
+                    "maxAmountRequired": str(self.amount_micros),
+                    "asset": "USDT",
                     "payTo": self.pay_to,
                 }
             ]
