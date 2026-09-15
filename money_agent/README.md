@@ -4,25 +4,36 @@ A bounded **merchant + buyer** agent. It sells a paid insight (`HTTP 402` / x402
 
 **Paying itself does not print money.** Self-buys are internal transfers. Net assets rise only when an external buyer is funded (the simulated market, or a real wallet you wire later).
 
+## Agent wallet + your payout address
+
+The agent can create a **local keystore** (`~/.money-agent/agent.wallet.json`, mode `0600`). That file is gitignored. The HTTP API only ever shows the **public address**.
+
+Payouts go to **your public `0x` wallet**, set via env or CLI. **Karten, CVV, Seed-Phrasen und Private Keys werden abgelehnt** — nicht in den Chat, nicht in JSON.
+
+```bash
+python -m money_agent wallet --init
+export MONEY_AGENT_PAYOUT_ADDRESS=0xYourPublicAddressHere000000000000000000
+# or:
+python -m money_agent payout-dest --to 0xYourPublicAddressHere000000000000000000
+
+python -m money_agent shift --customers 5 --db ./money.sqlite
+python -m money_agent payout --db ./money.sqlite --amount-micros 50000
+```
+
+`payout` bucht Treasury → deine Adresse im Ledger. On-chain Broadcast brauchst du mit deinem eigenen Signer (MetaMask, Coinbase, AgentCore). Diese Datei ist **kein** Ethereum-secp256k1-Key für Mainnet.
+
 ## Honest limits
 
-- This ledger is **local USD micros**, not Coinbase/Stripe settlement.
-- Live USDC needs AgentCore Payments (or another wallet) plus a human-approved spend session. The agent **cannot mint** a budget.
-- No scraping, spam, or “guaranteed yield.” Revenue is a paid lookup you actually deliver.
+- This ledger is **local USD micros**, not Coinbase/Stripe card settlement.
+- The agent **cannot mint** a budget and **will not charge a card**.
+- No scraping, spam, or “guaranteed yield.”
 
-## Run a shift
-
-```bash
-python -m money_agent shift --customers 5
-```
-
-## Serve dashboard + 402 API
+## Serve
 
 ```bash
-python -m money_agent serve --port 8765
+python -m money_agent serve --port 8765 --db ./money.sqlite
 ```
 
-- `GET /` — treasury, agent float, net assets
-- `GET /api/books` — JSON ledger
-- `GET /v1/insight?q=...` — `402 Payment Required` until a valid HMAC proof
-- `POST /v1/shift` — `{"customers":3}` runs a simulated earning shift
+- `GET /` — treasury, payout dest, agent address
+- `GET /api/wallet` — public addresses only
+- `POST /v1/payout` — `{"amount_micros":50000}` (optional `"to"` must match config)

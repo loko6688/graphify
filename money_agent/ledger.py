@@ -18,6 +18,7 @@ class Books:
     agent_micros: int
     revenue_micros: int
     spend_micros: int
+    payout_micros: int
     net_profit_micros: int
     session_spent_micros: int
 
@@ -112,6 +113,12 @@ class Ledger:
             self._transfer(AGENT, TREASURY, amount, "cogs", memo)
             self._conn.commit()
 
+    def payout_to_owner(self, amount: int, dest_address: str, memo: str = "owner payout") -> None:
+        """Treasury leaves the agent to the operator's external wallet (MARKET)."""
+        with self._lock:
+            self._transfer(TREASURY, MARKET, amount, "payout", f"{memo} {dest_address}")
+            self._conn.commit()
+
     def books(self) -> Books:
         with self._lock:
             rev = self._conn.execute(
@@ -126,12 +133,16 @@ class Ledger:
             inflow = self._conn.execute(
                 "SELECT COALESCE(SUM(amount_micros),0) FROM entries WHERE kind = 'inflow'"
             ).fetchone()[0]
+            payout = self._conn.execute(
+                "SELECT COALESCE(SUM(amount_micros),0) FROM entries WHERE kind = 'payout'"
+            ).fetchone()[0]
             return Books(
                 treasury_micros=self._balance(TREASURY),
                 agent_micros=self._balance(AGENT),
                 revenue_micros=int(rev),
                 spend_micros=int(spend),
-                net_profit_micros=int(inflow),
+                payout_micros=int(payout),
+                net_profit_micros=int(inflow) - int(payout),
                 session_spent_micros=int(session),
             )
 

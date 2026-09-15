@@ -31,7 +31,15 @@ class MoneyAgent:
     def __init__(self, ledger: Ledger, policy: SpendPolicy, *, endowment_bps: int = 10_000) -> None:
         self.ledger = ledger
         self.policy = policy
-        self.endowment_bps = endowment_bps  # 1000 = 10% of each sale to operating budget
+        self.endowment_bps = endowment_bps
+
+    def payout(self, amount_micros: int, dest_address: str) -> None:
+        from money_agent.wallet import validate_payout_address
+
+        dest = validate_payout_address(dest_address)
+        if amount_micros <= 0:
+            raise ValueError("amount must be positive")
+        self.ledger.payout_to_owner(amount_micros, dest)
 
     def insight_for(self, query: str) -> str:
         pick = CATALOG[sum(ord(c) for c in query) % len(CATALOG)]
