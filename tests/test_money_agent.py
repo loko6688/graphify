@@ -13,7 +13,7 @@ from money_agent.ledger import AGENT, TREASURY, Ledger
 from money_agent.policy import PolicyError, SpendPolicy
 from money_agent.server import make_server
 from money_agent.x402 import INSIGHT_RESOURCE, PRICE_MICROS, Challenge, sign_proof
-from money_agent.engine import run_turbo
+from money_agent.engine import run_go, run_turbo
 from money_agent.wallet import WalletError, create_wallet, public_view, validate_payout_address
 from money_agent.__main__ import default_policy, main
 
@@ -235,6 +235,7 @@ class HttpPayoutTests(unittest.TestCase):
             self.assertTrue(act["entries"])
             home = urlopen(f"http://127.0.0.1:{port}/", timeout=5).read().decode()
             self.assertIn("Turbo", home)
+            self.assertIn("Vollgas", home)
         finally:
             httpd.shutdown()
             ledger.close()
@@ -264,6 +265,17 @@ class TurboTests(unittest.TestCase):
         self.assertFalse(report.real_settlement)
         memos = " ".join(e["memo"] for e in ledger.recent_entries(50))
         self.assertIn(dest, memos)
+        go = run_go(
+            agent,
+            rounds=2,
+            ticks=2,
+            customers_per_tick=2,
+            payout_to=dest,
+            reserve_micros=PRICE_MICROS,
+            auto_payout=True,
+        )
+        self.assertEqual(go.sales, 8)
+        self.assertGreater(go.credits_micros, 0)
         ledger.close()
         tmp.cleanup()
 

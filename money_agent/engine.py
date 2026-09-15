@@ -128,6 +128,50 @@ def run_turbo(
     )
 
 
+def run_go(
+    agent: MoneyAgent,
+    *,
+    rounds: int,
+    ticks: int,
+    customers_per_tick: int,
+    payout_to: str | None,
+    reserve_micros: int,
+    auto_payout: bool,
+    reinvest_bps: int = 4000,
+) -> TurboReport:
+    """Stack several turbo runs on the same ledger (vollgas)."""
+    rounds = max(1, min(rounds, 20))
+    sales = 0
+    payouts = 0
+    swept = 0
+    reinvested = 0
+    details: list[TickResult] = []
+    last: TurboReport | None = None
+    for _ in range(rounds):
+        last = run_turbo(
+            agent,
+            ticks=ticks,
+            customers_per_tick=customers_per_tick,
+            payout_to=payout_to,
+            reserve_micros=reserve_micros,
+            auto_payout=auto_payout,
+            reinvest_bps=reinvest_bps,
+        )
+        sales += last.sales
+        payouts += last.payouts
+        swept += last.swept_micros
+        reinvested += last.reinvested_micros
+        details.extend(last.ticks_detail)
+    assert last is not None
+    last.ticks = ticks * rounds
+    last.sales = sales
+    last.payouts = payouts
+    last.swept_micros = swept
+    last.reinvested_micros = reinvested
+    last.ticks_detail = details
+    return last
+
+
 def turbo_public(report: TurboReport) -> dict:
     body = report.as_json()
     body["ticks_detail"] = [

@@ -13,9 +13,10 @@ Payouts go to **your public Solana or `0x` wallet**. **Karten, CVV, Seed-Phrasen
 ```bash
 python -m money_agent wallet --init
 python -m money_agent payout-dest --to 4M7DGWMb4aGhdYktPwAkxQFZido81MeukReSgu2mJ2oM
-python -m money_agent turbo --db ./money.sqlite --ticks 8 --customers 3
-python -m money_agent serve --port 8765 --db ./money.sqlite
+python -m money_agent go --rounds 4 --ticks 8 --customers 4
 ```
+
+`go` stacked turbo rounds on the same ledger (credits + payout split). Default DB: `~/.money-agent/ledger.sqlite`.
 
 40% of excess stays as **credits** (working capital). The rest is booked to your Solana address. SPL **USDT** uses the same public key (`Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB`). A separate Tron `T…` USDT address: `export MONEY_AGENT_USDT_ADDRESS=T...` (paste only the public address).
 

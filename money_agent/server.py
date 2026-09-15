@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 from money_agent.agent import MoneyAgent
 from money_agent.config import OperatorConfig
-from money_agent.engine import run_turbo, sweep_excess, turbo_public
+from money_agent.engine import run_go, run_turbo, sweep_excess, turbo_public
 from money_agent.ways import ways_payload
 from money_agent.wallet import AgentWallet, WalletError, validate_payout_address
 from money_agent.x402 import INSIGHT_RESOURCE, PRICE_MICROS, new_challenge, sign_proof, verify_proof
@@ -43,12 +43,13 @@ button{background:#22c55e;color:#052e16;border:0;border-radius:8px;padding:.55re
 table{width:100%;font-size:.85rem;border-collapse:collapse} td,th{text-align:left;padding:.3rem 0;border-bottom:1px solid #243656}
 </style></head><body><div class="card">
 <h1>Money Agent</h1>
-<p>Earn, then sweep treasury to <b>your public 0x address</b>. No cards. No seeds.</p>
+<p>Earn → credits (reinvest) → payout to <b>your Solana / USDT public address</b>. No cards. No seeds.</p>
 <p class="num" id="books">Loading…</p>
 <p>Agent: <code id="wallet">$WALLET</code><br>Payout: <code id="dest">$DEST</code></p>
 <div class="row">
 <button id="shift">Run shift (3 buyers)</button>
-<button id="turbo">Turbo (5 ticks + auto payout)</button>
+<button id="turbo">Turbo (5 ticks)</button>
+<button id="go">Vollgas (3×8 ticks)</button>
 <button id="sweep">Sweep excess</button>
 </div>
 <p class="warn">Ledger USD. Broadcast on-chain with your own signer.</p>
@@ -73,6 +74,7 @@ async function post(url, body){
 }
 document.getElementById('shift').onclick = () => post('/v1/shift',{customers:3});
 document.getElementById('turbo').onclick = () => post('/v1/turbo',{ticks:5,customers:3});
+document.getElementById('go').onclick = () => post('/v1/go',{rounds:3,ticks:8,customers:4});
 document.getElementById('sweep').onclick = () => post('/v1/sweep',{});
 refresh();
 </script>
@@ -230,6 +232,22 @@ class Handler(BaseHTTPRequestHandler):
             customers = int(body.get("customers", 3))
             report = run_turbo(
                 self.agent,
+                ticks=ticks,
+                customers_per_tick=customers,
+                payout_to=self.payout_to,
+                reserve_micros=self._reserve(),
+                auto_payout=self._auto(),
+                reinvest_bps=self._reinvest(),
+            )
+            self._json(200, turbo_public(report))
+            return
+        if parsed.path == "/v1/go":
+            rounds = int(body.get("rounds", 3))
+            ticks = int(body.get("ticks", 8))
+            customers = int(body.get("customers", 4))
+            report = run_go(
+                self.agent,
+                rounds=rounds,
                 ticks=ticks,
                 customers_per_tick=customers,
                 payout_to=self.payout_to,
